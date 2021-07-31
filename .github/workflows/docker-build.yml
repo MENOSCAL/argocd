@@ -44,4 +44,4 @@ jobs:
           file: ./python-helloworld/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: menoscal/python-helloworld:latest
+          tags: menoscal/python-helloworld:v1.0.0
