@@ -1,0 +1,321 @@
+*Push Git
+git status
+git add .
+git commit -m 'file helm'
+git push origin master
+
+*Git Action
+mkdir -p / .github/workflows
+
+*Instalar python/flask
+cd Udacity-Cloud-Native
+py -3 -m venv venv
+source venv/Scripts/activate
+pip install Flask
+*Activar venv - python/flask
+source venv/Scripts/activate
+cd python-helloworld
+python app.py
+http://127.0.0.1:5000/
+*Push DockerHub
+docker build -t python-helloworld .
+docker login docker.io
+docker tag python-helloworld menoscal/python-helloworld:v1.0.0
+docker push menoscal/python-helloworld:v1.0.0
+*Test:
+docker run -d -p 5000:5000 python-helloworld
+http://127.0.0.1:5000/
+
+*Crea modulo GO
+go mod init 
+docker build -t gohelloworld .
+docker tag gohelloworld menoscal/gohelloworld:v1.0.0
+docker push menoscal/gohelloworld:v1.0.0
+docker ps
+docker images
+*Test:
+docker run -d -p 6111:6111 gohelloworld
+http://127.0.0.1:6111/
+
+*Iniciar vagrant, Kubernetes, K3s
+vagrant up
+vagrant ssh
+sudo su -
+curl -sfL https://get.k3s.io | sh -
+kubectl create deploy gohelloworld --image=menoscal/gohelloworld:v1.0.0
+kubectl get deploy
+kubectl get rs
+kubectl get po
+zypper install apparmor-parser
+*Test:
+kubectl port-forward --address  192.168.50.4 po/gohelloworld-856d99c996-zbq4f 6111:6111
+http://192.168.50.4:6111/
+
+*Crear Servicio(target-port=Origen)
+kubectl expose deploy gohelloworld --port=6111 --target-port=6111
+kubectl get svc
+kubectl run test-$RANDOM --namespace=default --rm -it --image=alpine -- sh
+wget -qO- 10.43.5.244:6111
+
+*Crear imagen python/Kubernetes
+kubectl create ns demo1
+kubectl create deploy pyt --image=menoscal/python-helloworld:v1.0.0  --replicas=3 --namespace demo1
+kubectl get deploy -n demo1
+kubectl get rs -n demo1
+kubectl get po -n demo1
+*Test:
+kubectl port-forward --address  192.168.50.4 po/pyt-84b784b5cf-xd8ps 5000:5000 -n demo1
+http://192.168.50.4:5000/
+
+*Crear imagen nginx-alpine/Kubernetes
+kubectl create ns demo
+kubectl label ns demo tier=test
+kubectl create deploy nginx-alpine --image=nginx:alpine  --replicas=3 --namespace demo
+kubectl label deploy nginx-alpine app=nginx tag=alpine --namespace demo
+kubectl get deploy -n demo
+kubectl get rs -n demo
+kubectl get po -n demo
+*Test:
+kubectl port-forward --address  192.168.50.4 po/nginx-alpine-c9587b5-w59k5 8080:80 -n demo
+http://192.168.50.4:8080/
+*Crear Servicio
+kubectl expose deployment nginx-alpine --port=8111 --target-port=80 --namespace demo
+*Prueba:
+kubectl get svc -n demo
+kubectl run test-$RANDOM --namespace=default --rm -it --image=alpine -- sh
+wget -qO- 10.43.247.35:8111
+*Crear Config-Map
+kubectl create configmap nginx-version --from-literal=version=alpine --namespace demo
+kubectl get cm -n demo
+kubectl describe cm nginx-version -n demo
+kubectl get ns
+kubectl get all -n demo
+
+*Manifiestos declarativo nginx-alpine
+kubectl create ns demo --dry-run=client -o yaml > namespace.yaml
+kubectl apply -f namespace.yaml
+kubectl create deploy nginx-alpine --image=nginx:alpine  -r=3 -n demo --dry-run=client -o yaml > deploy.yaml
+kubectl apply -f deploy.yaml
+kubectl expose deployment nginx-alpine --port=8111 --target-port=80 -n demo --dry-run=client -o yaml > service.yaml
+kubectl apply -f service.yaml
+kubectl create configmap nginx-version --from-literal=version=alpine -n demo --dry-run=client -o yaml > configmap.yaml
+kubectl apply -f configmap.yaml
+
+*Kubectl - Visualizar
+cat namespace.yaml
+cat deploy.yaml
+cat service.yaml
+cat configmap.yaml
+
+*Kubectl - Editar/Salir ":wq"
+kubectl edit ns demo -o yaml
+kubectl edit deploy nginx-alpine -o yaml -n demo
+kubectl edit service nginx-alpine -o yaml -n demo
+kubectl edit configmap nginx-version -o yaml -n demo
+
+*Configurar ArgoCD
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl get svc -n argocd-server -o yaml > argocd-nodeport.yaml
+vi argocd-nodeport.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd-server
+    app.kubernetes.io/part-of: argocd
+  name: argocd-server-nodeport
+  namespace: argocd
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 30007
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 30008
+  selector:
+    app.kubernetes.io/name: argocd-server
+  sessionAffinity: None
+  type: NodePort
+kubectl apply -f argocd-nodeport.yaml
+kubectl get svc -n argocd
+https://192.168.50.4:30008/
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+*Credenciales
+User: admin
+Clave:
+***************
+
+*Python Test usando Argocd (CRD)
+vi argocd-python.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: python-helloworld
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: python-manifests
+    repoURL: https://github.com/menoscal/argocd
+    targetRevision: HEAD
+  syncPolicy: {}
+kubectl apply -f argocd-python.yaml
+kubectl get application -n argocd
+kubectl get po
+*Test:
+kubectl port-forward --address  192.168.50.4 po/python-helloworld-5bdc78b49f-8x9vw 5000:5000
+http://192.168.50.4:5000/
+
+*Nginx Test usando Argocd (CRD)
+vi argocd-nginx.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-alpine
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    # path to the folder with the YAML manifests
+    path: nginx-manifests
+    repoURL: https://github.com/menoscal/argocd 
+    targetRevision: HEAD
+  # Sync policy
+  syncPolicy: {}
+kubectl apply -f argocd-nginx.yaml
+kubectl get application -n argocd
+kubectl get po -n demo
+*Test:
+kubectl port-forward --address  192.168.50.4 po/nginx-alpine-7f4dbcb698-jqtwv 8080:80 -n demo
+http://192.168.50.4:8080/
+*Prueba:
+kubectl get svc -n demo
+kubectl run test-$RANDOM --namespace=default --rm -it --image=alpine -- sh
+wget -qO- 10.43.234.131:8111
+
+*Python Test usando Argocd y Helm
+vi argocd-python.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: python-helloworld 
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    helm:
+      valueFiles:
+      - values.yaml
+    path: helm/python-helloworld
+    repoURL: https://github.com/menoscal/argocd
+    targetRevision: HEAD
+kubectl apply -f argocd-python.yaml
+kubectl get application -n argocd
+kubectl get po -n test
+*Test:
+kubectl port-forward --address  192.168.50.4 po/python-helloworld-5d9c994b8c-dpljr 5000:5000 -n test
+http://192.168.50.4:5000/
+
+*Python Producion usando Argocd y Helm
+vi argocd-python-prod.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: python-helloworld-prod 
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    helm:
+      valueFiles:
+      - values-prod.yaml 
+    path: helm/python-helloworld 
+    repoURL: https://github.com/menoscal/argocd
+    targetRevision: HEAD
+kubectl apply -f argocd-python-prod.yaml
+kubectl get application -n argocd
+kubectl get po -n prodpy
+*Test:
+kubectl port-forward --address  192.168.50.4 po/python-helloworld-5d9c994b8c-mjz9w 5000:5000 -n prod
+http://192.168.50.4:5000/
+
+*Nginx Staging usando Argocd y Helm
+vi argo-nginx-staging.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-staging 
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    helm:
+      valueFiles:
+      - values-staging.yaml
+    path: helm/nginx-deployment
+    repoURL: https://github.com/menoscal/argocd
+    targetRevision: HEAD
+kubectl apply -f argo-nginx-staging.yaml
+kubectl get application -n argocd
+kubectl get po -n staging
+*Test:
+kubectl port-forward --address  192.168.50.4 po/nginx-alpine-5c84584bd7-rgtjn 8080:80 -n staging
+http://192.168.50.4:8080/
+*Prueba:
+kubectl get svc -n staging
+kubectl run test-$RANDOM --namespace=default --rm -it --image=alpine -- sh
+wget -qO- 10.43.241.195:8111
+
+*Nginx Produccion usando Argocd y Helm
+vi argo-nginx-prod.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-prod
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    helm:
+      valueFiles:
+      - values-prod.yaml
+    path: helm/nginx-deployment 
+    repoURL: https://github.com/menoscal/argocd
+    targetRevision: HEAD
+kubectl apply -f argo-nginx-prod.yaml
+kubectl get application -n argocd
+kubectl get po -n prod
+*Test:
+kubectl port-forward --address  192.168.50.4 po/nginx-alpine-78996cf88d-65znt 8080:80 -n prod
+http://192.168.50.4:8080/
+*Prueba:
+kubectl get svc -n prod
+kubectl run test-$RANDOM --namespace=default --rm -it --image=alpine -- sh
+wget -qO- 10.43.167.212:80
